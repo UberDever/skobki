@@ -1,0 +1,16 @@
+CompileFlags:
+  Add:
+    - -std=c89
+    - -Wall
+    - -Wextra
+    - -Werror
+    - -pedantic
+    - -DDEBUG
+    - -g
+    - -x
+    - c
+
+
+ClangTidy:
+  Add:
+    - readability-magic-numbers
