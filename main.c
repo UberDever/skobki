@@ -5,14 +5,14 @@
 
 int main(void) {
 #if 0
-  const char* s = "\\}}\nabc}def   booba beeba782";
-  const char* s = "";
-  const char* s = " ";
-  const char* s = "}";
-  const char* s = "\\";
-  const char* s = "\\}";
+const char* s = "";
+const char* s = " ";
+const char* s = "}";
+const char* s = "\\";
+const char* s = "\\}";
+const char* s = "abc";
 #endif
-  const char* s = "abc";
+const char* s = "\\}}\nabc}def   booba beeba782";
   struct config_t cfg = default_config();
   struct lexer_t l = {0};
   size_t len = 0;

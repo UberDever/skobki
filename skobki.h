@@ -14,8 +14,6 @@ typedef size_t bool;
 struct config_t {
   char delimiters[MAX_PUNCT_TYPES];
   size_t delimiters_len;
-  char brackets[MAX_PUNCT_TYPES];
-  size_t brackets_len;
   char escapes[MAX_PUNCT_TYPES];
   size_t escapes_len;
 };
@@ -26,9 +24,8 @@ struct span_t {
 };
 
 enum token_type_t {
-  token_type_other,
+  token_type_char,
   token_type_delimiter,
-  token_type_bracket,
   token_type_escape
 };
 
@@ -50,10 +47,9 @@ struct config_t default_config(void) {
   struct config_t r = {0};
   r.delimiters[0] = ' ';
   r.delimiters[1] = '\n';
-  r.delimiters_len = 2;
-  r.brackets[0] = '{';
-  r.brackets[1] = '}';
-  r.brackets_len = 2;
+  r.delimiters[2] = '{';
+  r.delimiters[3] = '}';
+  r.delimiters_len = 4;
   r.escapes[0] = '\\';
   r.escapes_len = 1;
   return r;
@@ -85,18 +81,15 @@ bool peek_token_char_recognizable(
 
 enum token_type_t peek_token_char(struct lexer_t l) {
   if (l.is_eof || l.error != 0) {
-    return token_type_other;
+    return token_type_char;
   }
   if (peek_token_char_recognizable(l, l.config.delimiters, l.config.delimiters_len)) {
     return token_type_delimiter;
   }
-  if (peek_token_char_recognizable(l, l.config.brackets, l.config.brackets_len)) {
-    return token_type_bracket;
-  }
   if (peek_token_char_recognizable(l, l.config.escapes, l.config.escapes_len)) {
     return token_type_escape;
   }
-  return token_type_other;
+  return token_type_char;
 }
 
 struct token_t next_token_char(struct lexer_t* l, enum token_type_t type) {
@@ -113,7 +106,7 @@ struct token_t next_token_char(struct lexer_t* l, enum token_type_t type) {
       return token;
     }
 
-    token.type = token_type_other;
+    token.type = token_type_char;
     goto fill_token;
   }
 
@@ -134,18 +127,18 @@ struct token_t next_token(struct lexer_t* l) {
     return token;
   }
   type = peek_token_char(*l);
-  if (type != token_type_other) {
+  if (type != token_type_char) {
     return next_token_char(l, type);
   }
 
   token.contents.start = &l->input.start[l->cur];
-  token.type = token_type_other;
+  token.type = token_type_char;
   while (1) {
     type = peek_token_char(*l);
     if (l->is_eof || l->error != 0) {
       return token;
     }
-    if (type == token_type_other) {
+    if (type == token_type_char) {
       token.contents.len++;
       advance(l);
       continue;
