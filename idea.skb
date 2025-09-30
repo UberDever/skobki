@@ -1,0 +1,44 @@
+{
+    {#delimiters 2d 20}----{#delimiters 0a 20}
+    {#brackets 28 29}
+    (#escape 24)
+    (This is not \escaped, but this $$ is a single dollar. Single quote: $) )
+    (#escape 5c)
+    (#brackets 7b 7d 28 29)
+    {#delimiters 24}
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$${#delimiters 24 2d}--$$-$-$-$$$---$-${#delimiters 0a 20}
+    {#comment
+        Reserved directives are '#delimiters', '#brackets' and '#escape'
+        They are expected to be on the first position of the sexp
+        All the stuff that is parsed next is strictly predetermined
+        TODO: write directive format down + write all initial configuration of the parser
+        You can use escape to use \#delimiters as a plain word
+    }
+    {#rem
+        Comments, rem and whatever are the things I made up on the fly
+        Skobki doesn't know about them, they are parsed as usual
+        Tokens that are received from the parser always separated by \#delimiters,
+        so this allegedly "string" is not a string, but a tree of words and delimiters
+        This is the user responsibility to concatenate the string from this tree
+    }
+    {#rem directives can be local:
+        {#delimiters 2d 20}----------
+----after-bracket-is-closed,-delimiters-are-restored-to-previous-state}
+    {{#delimiters}
+        If you need a huge blob of text like this without too many tokens being spit out,
+        you can use this option to remove delimiters alltogether (locally in this sexp), so this
+        text is really a blob, with all the punctuation inbetween
+    }
+
+    Types can be represented like so:
+    {#i64 -2}
+    {{#list #str-utf-8}
+        {{#d}This string is preserved as one token}
+        {{#d}This string also}
+        {And this is just a bag of words}
+    }
+    Types are irrelevant to the parser also
+    {{#d}{#b ? |}{#e}
+    Only relevant things are: #d #b #e and preconfigured {#d ' ' '\n'}, {#b { } ( )} {#e \}
+    |
+}

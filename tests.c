@@ -3,6 +3,9 @@
 #include "skobki.h"
 #include <stdio.h>
 #include <stdlib.h>
+
+/* clang -g -std=c89 -Wall -Wextra -fsanitize=address,leak,bounds,undefined tests.c -o tests && ./tests */
+
 #if 0
 int main(void) {
 #if 0
