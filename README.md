@@ -103,8 +103,8 @@ Also see [more examples](#more-examples) below.
 1. Sexpr -- a list, each containing payload or other sexpr
 1. Payload -- data encoded in particular format with certain length
 1. Token -- a view into payload; a token can be control or text
-1. Character -- a part of the payload that is not furhter divisible in the current encoding.
-1. Control set -- set of characters that dictates the structure of the document (the contents of resuling tree)
+1. Character -- a part of the payload that is not further divisible in the current encoding.
+1. Control set -- set of characters that dictates the structure of the document (the contents of resulting tree)
 1. Delimiters -- set of characters that delimits text tokens
 1. Braces -- set of characters that is used to contruct document tree nodes
 1. Escape -- a character that is used to escape other characters from control set
@@ -131,7 +131,7 @@ Token ::=
     | ESCAPE CHARACTER
     | OPEN_BRACE Token* CLOSE_BRACE
 ```
-Where `DELIMITER` is any character from delimiters control set, `ESCAPE` is a character from escape control set and `OPEN_BRACE` and `CLOSE_BRACE` are pair of characters from braces control set.
+Where `DELIMITER` is any character from delimiters control set, `ESCAPE` is a character from escape control and `OPEN_BRACE` and `CLOSE_BRACE` are pair of characters from braces control set.
 
 ### Control set
 
@@ -147,7 +147,7 @@ ControlSet = {
 There are following restrictions on the set:
 1. `C` is a character from (`\u0000-\u007F`)
 1. Sets that are formed from these lists are disjoint
-1. Sum of lengths of every set is expected to be less than some arbitrary N that is implementation-defined
+1. The total number of distinct control characters (|delimeters| + |braces| + 1 escape) MUST NOT exceed an implementation-defined constant N (e.g. 32)
 
 Default configuration of the control set expected to be the following:
 ```ts
@@ -193,7 +193,7 @@ HEX ::= [0-9a-f]
 ESCAPED ::= "\\" ( "\\" | "\"" | "'" | "n" | "r" | "t" | "f" | "u" HEX HEX HEX HEX )
 CHAR ::= 0x00-0x7F # excluding ESCAPED ascii range
 C_STR ::= '"' (ESCAPED | CHAR)* '"'
-IDENT ::= [a-bA-B_]+
+IDENT ::= [a-z_]+
 NUM ::=  [0-9] | [1-9][0-9]+
 
 Directive ::= '[' ESCAPE DirectiveBody ']'
@@ -204,7 +204,7 @@ DirectiveBody ::=
 
 The main purpose of directives is to configure the lexer in some way for the rest of enclosing sexpr or till the EOF. The directive is in effect after closing bracket of the directive and until the next matching brace that syntactically matches the beginning brace of enclosing sexpr. Note that this closing brace is expected immediately after the directive effect ends.
 
-There are a number of different directives. To represent the currently used escape, the symbol `\` will be used in the following description of the directives. Note that the default symbol that is used for escape is backtick \`
+There are a number of different directives. To represent the currently used escape, the symbol `\` will be used in the following description of the directives. Note that the default symbol that is used for escape is backtick \`, but backslash is used primarily for illustrative purposes.
 
 1. `[\s]`. String directive. Directive forces the lexer to include every character that is not a matching closing brace of the enclosing sexpr. The escape could be used to escape the escape itself or the matching closing brace to continue consuming the input. Example:
 ```lisp
@@ -230,10 +230,10 @@ can't use \SLOP as a word directly since it is a sentinel, but ) or 🍰 can be 
 ```
 Grammar:
 ```EBNF
-StrSentinel ::= '[' ESCAPE str WS+ C_STR WS* ']'
+StrSentinel ::= '[' ESCAPE s WS+ C_STR WS* ']'
 ```
 
-3. `[\raw N]`. Raw payload. Directive forces the lexer to include every character up until certain count N, where N is a count of characters in selected encoding. N could be represented as an natural of particular size and can have an upper limit that is implementation defined. For UTF-8 it is the count of codepoints. Escaping doesn't work while the directive is in effect, since there is no need for it. Example:
+3. `[\raw N]`. Raw payload. Directive forces the lexer to skip the next N bytes. N could be represented as an natural of particular size and can have an upper limit that is implementation defined. Escaping doesn't work while the directive is in effect, since there is no need for it. Example:
 ```lisp
 ([\raw 91]This woman 👩‍🚒 wears red hat. Wow! Also, anyone knows what `str` in JS? What about `\aboba`?)
 ```
@@ -242,7 +242,7 @@ Grammar:
 Raw ::= '[' ESCAPE raw WS+ NUM WS* ']'
 ```
 
-4. `[\skobki ...]`. Configuration directive. Directive forces to replace character class (delimiters, braces or escape) in the control set up until matching closing brace. When delimiters are changed, matching control brace still expected to be the a counterpart of begining brace that has formed the enclosing sexpr. The replaced character class must obey [the rules](#control-set) for control set. Any clause from (`delimiters:`, `braces:`, `escape:`) must appear at most once. Configuration directive cannot be empty. Example:
+4. `[\skobki ...]`. Configuration directive. Directive forces to replace character class (delimiters, braces or escape) in the control set up until matching closing brace. When delimiters are changed, matching control brace still expected to be the a counterpart of beginning brace that has formed the enclosing sexpr. The replaced character class must obey [the rules](#control-set) for control set. Any clause from (`delimiters:`, `braces:`, `escape:`) must appear at most once. Configuration directive cannot be empty. Example:
 ```lisp
 (
     [\skobki braces: "{" "}"]
@@ -261,7 +261,7 @@ Skobki ::= '[' ESCAPE skobki WS+ (
     | delimiters: WS+ C_STR
     | braces: WS+ C_STR WS+ C_STR
     | escape: '"' CHAR '"'
-)+ WS+ ']'
+)+ WS* ']'
 ```
 
 5. `[\ver N M K]`. Version directive. Upon encountering the directive, check if specified version in form of N.M.K (major, minor and patch) is less than or equal to
@@ -279,7 +279,7 @@ Ver ::= '[' ESCAPE ver WS+ NUM WS+ NUM WS+ NUM WS* ']'
 
 Other directive names are reserved for future use.
 
-Directives (if any) must appear as an immediate character sequence after begining brace of the sexpr, although, there can be any number of delimiter characters preceeding such directive. There can only be one directive clause per sexpr. If multiple directives are encountered, an error is issued.
+Directives (if any) must appear as an immediate character sequence after beginning brace of the sexpr, although, there can be any number of delimiter characters preceeding such directive. There can only be one directive in the sexpr. Since sexpr can contain other sexpr, parent sexpr can contain directive while children can contain their own directives. In other words, only one directive is allowed on the given tree level in a given subtree. If multiple directives are encountered, an error is issued.
 
 Directives can stack. That is, if some directive allows parsing in general mode after it is encountered (like \`skobki or \`ver directives), the next directive encountered
 in the child sexpr can stack up with effect from parent directive. Effect of every directive is lexically scoped, that is, when scope of the directive ends on closing brace, its effect cancels. This means, that \`skobki configuration can be used locally
@@ -287,7 +287,7 @@ to parse some arbitrary part of document tree differently, preserving the config
 
 ## Parser
 
-Since lexican tokens are insufficient to properly manipulate the tree, the concept of node is introduced. Nodes are used to link text tokens into a tree. Node has the following structure:
+Since lexical tokens are insufficient to properly manipulate the tree, the concept of node is introduced. Nodes are used to link text tokens into a tree. Node has the following structure:
 
 ```ts
 Node = {
@@ -303,6 +303,12 @@ where `index` is a descriptor that is semantically used as an index into tokens 
 Indices `start` and `end` encode a span of tokens that compose the node. `count` is used to encode how many children given nodes has. `parent` is used to reference parent node of the current node. `next_sibling` is used to reference next sibling on the same level as the current node.
 
 The children of a particular node need to go immediately after the node itself. "Immediately after" specifies correponding location in the node collection that composes the document tree. This is reminiscent of the in-order tree traversal of a parsed tree.
+
+TODO: be explicit about errors
+
+## Diagrams
+
+TODO: lexer and parser as a diagrams with explicit links on a particular example
 
 # More examples
 
