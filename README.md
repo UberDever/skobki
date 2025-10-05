@@ -1,5 +1,58 @@
 # I believe in sexpr supremacy
 
+# In short
+
+It sucks that such formats as `csv` are popular, yet there is no popular strictly tree-based format with minimal syntax. But this format exists and its called [s-expressions](https://stackoverflow.com/a/74172551)! The problem, however, is that this format is pretty unspecified and tied to a particular language. Also, there is a way to extend it to be usable, but it requires adding built-in types like `string` or `date` that remove beauty the generality of the format alltogether!
+
+This take on the format preserves basic sexpr as a main building block for the tree. Instead of built-in types it uses special *lexing directives* that allow to parse particular character sequence differently. This way, you get any character sequence as you like without such fuss as commas, quotes or other delimiter junk.
+
+# Examples
+
+The simple tree with the root node containing two words `Hello` and `world`
+```lisp
+(Hello world)
+```
+
+More sophisticated example encoding arbitrary configuration
+```lisp
+(
+    (user: (
+        name: Alice
+        roles: (admin tester)
+        active: true
+    ))
+    (max_sessions: 5)
+)
+```
+
+Corresponding JSON
+```json
+{
+    "user": {
+        "name": "Alice",
+        "roles": ["admin", "tester"],
+        "active": true
+    },
+    "maxSessions": 5
+}
+```
+
+As you see, there is no much difference. However, the same JSON could be encoded differently
+
+```lisp
+(   [`skobki braces: "{([" "})]"]
+    user: { 
+        name: Alice
+        roles: [admin tester]
+        active: true
+    }
+    max_sessions: 5
+)
+```
+
+Looks much more clean, isn't it? Thanks to `skobki` [directive](#directives), we are able to use different syntax to aid readability
+
+
 # Spec
 
 ## About
@@ -25,7 +78,7 @@
 
 1. Sexpr -- a list, each containing payload or other sexpr
 1. Payload -- data encoded in particular format with certain length
-1. Token -- a view on the payload described by the pair of positions (start, end); can be control or text
+1. Token -- a view into payload; a token can be control or text
 1. Character -- a part of the payload that is not furhter divisible in the current encoding.
 1. Control set -- set of characters that dictates the structure of the document (the contents of resuling tree)
 1. Delimiters -- set of characters that delimits text tokens
@@ -44,29 +97,27 @@ Hovewer, the format itself doesn't restrict the use of other (even UTF-32) encod
 ## Lexer
 
 The lexical structure of the document is defined by the following EBNF
-```
-    CHARACTER
-    WORD ::= CHARACTER+
-    WORD | DELIMITER | ESCAPE CHARACTER
+```EBNF
+TEXT ::= CHARACTER+
 
-    Tree ::= DELIMITER* OPEN_BRACE Token* CLOSE_BRACE DELIMITER*
-    Token ::= 
-        | WORD
-        | DELIMITER
-        | ESCAPE CHARACTER
-        | OPEN_BRACE Token* CLOSE_BRACE
+Tree ::= DELIMITER* OPEN_BRACE Token* CLOSE_BRACE DELIMITER*
+Token ::= 
+    | TEXT
+    | DELIMITER
+    | ESCAPE CHARACTER
+    | OPEN_BRACE Token* CLOSE_BRACE
 ```
 Where `DELIMITER` is any character from delimiters control set, `ESCAPE` is a character from escape control set and `OPEN_BRACE` and `CLOSE_BRACE` are pair of characters from braces control set.
 
 ### Control set
 
 Control set is defined as follows
-```
-    ControlSet = {
-        delimiters: List C
-        braces: List (C, C)
-        escape: C
-    }
+```ts
+ControlSet = {
+    delimiters: List C
+    braces: List (C, C)
+    escape: C
+}
 ```
 
 There are following restrictions on the set:
@@ -75,20 +126,20 @@ There are following restrictions on the set:
 1. Sum of lengths of every set is expected to be less than some arbitrary N that is implementation-defined
 
 Default configuration of the control set expected to be the following:
-```
-    control_set: ControlSet = {
-        delimiters = [
-            0x20, // space
-            0x09, // tab
-            0x0a, // LF
-            0x0d, // CR
-        ],
-        braces = [
-            0x28, // open round brace
-            0x29, // closed round brace
-        ],
-        escape = 0x60 // backtick
-    }
+```ts
+control_set: ControlSet = {
+    delimiters = [
+        0x20, // space
+        0x09, // tab
+        0x0a, // LF
+        0x0d, // CR
+    ],
+    braces = [
+        0x28, // open round brace
+        0x29, // closed round brace
+    ],
+    escape = 0x60 // backtick
+}
 ```
 
 ### Lexing process
@@ -112,7 +163,7 @@ Note that in any unexpected case an error is reported and lexing stops.
 Directive is a sequence of characters, enclosed in square brackets `[`, `]` with the open bracket followed immediately by escape from the control set and a sequence of characters designating identifier.
 
 By default, directive has the following grammar:
-```
+```EBNF
 WS ::= 0x20 | 0x09 | 0x0a | 0x0d
 HEX ::= [0-9a-f]
 ESCAPED ::= "\\" ( "\\" | "\"" | "'" | "n" | "r" | "t" | "f" | "u" HEX HEX HEX HEX )
@@ -129,74 +180,74 @@ The main purpose of directives is to configure the lexer in some way for the res
 There are a number of different directives. To represent the currently used escape, the symbol `\` will be used in the following description of the directives. Note that the default symbol that is used for escape is backtick \`
 
 1. `[\str]`. String directive. Directive forces the lexer to include every character that is not a matching closing brace of the enclosing sexpr. The escape could be used to escape the escape itself or the matching closing brace to continue consuming the input. Example:
-```
-    ([\str]This is a string)
-    ([\str] this also a string, but with \) being escaped)
-    ([\str]As you could
-        tell, there are no real
-                        difficulties
-    writing a multiline string verbatim too)
+```lisp
+([\str]This is a string)
+([\str] this also a string, but with \) being escaped)
+([\str]As you could
+    tell, there are no real
+                    difficulties
+writing a multiline string verbatim too)
 ```
 Grammar:
-```
-    Str ::= '[' ESCAPE str WS* ']'
+```EBNF
+Str ::= '[' ESCAPE str WS* ']'
 ```
 
 2. `[\str SENTINEL]`. String with sentinel. Directive forces the lexer to include every character that doesn't match a sentinel character sequence or EOF. The escape could be used to escape the escape itself or the sentinel character sequence to continue consuming the input. Sentinel must not represent a character from a current control set. Example:
-```
-    ([\str "EOF"]This string can contain anything: braces () and unbalanced ones ). Also some 
-    curlies-squares like {[with escapes \\ in them]} EOF)
-    ([\str "\""]This string will go a long way until double quote is encountered")
-    ([\str "\u0053\u004c\u004f\u0050"] The 0x53 0x4c 0x4f 0x50 is for \SLOP in UTF-8. Notice that we
-    can't use \SLOP as a word directly since it is a sentinel, but ) or 🍰 can be used SLOP)
+```lisp
+([\str "EOF"]This string can contain anything: braces () and unbalanced ones ). Also some 
+curlies-squares like {[with escapes \\ in them]} EOF)
+([\str "\""]This string will go a long way until double quote is encountered")
+([\str "\u0053\u004c\u004f\u0050"] The 0x53 0x4c 0x4f 0x50 is for \SLOP in UTF-8. Notice that we
+can't use \SLOP as a word directly since it is a sentinel, but ) or 🍰 can be used SLOP)
 ```
 Grammar:
-```
-    StrSentinel ::= '[' ESCAPE str WS+ C_STR WS* ']'
+```EBNF
+StrSentinel ::= '[' ESCAPE str WS+ C_STR WS* ']'
 ```
 
 3. `[\raw N]`. Raw payload. Directive forces the lexer to include every character up until certain count N, where N is a count of characters in selected encoding. N could be represented as an natural of particular size and can have an upper limit that is implementation defined. For UTF-8 it is the count of codepoints. Escaping doesn't work while the directive is in effect, since there is no need for it. Example:
-```
-    ([\raw 91]This woman 👩‍🚒 wears red hat. Wow! Also, anyone knows what `str` in JS? What about `\aboba`?)
+```lisp
+([\raw 91]This woman 👩‍🚒 wears red hat. Wow! Also, anyone knows what `str` in JS? What about `\aboba`?)
 ```
 Grammar:
-```
-    Raw ::= '[' ESCAPE raw WS+ NUM WS* ']'
+```EBNF
+Raw ::= '[' ESCAPE raw WS+ NUM WS* ']'
 ```
 
 4. `[\skobki ...]`. Configuration directive. Directive forces to replace character class (delimiters, braces or escape) in the control set up until matching closing brace. When delimiters are changed, matching control brace still expected to be the a counterpart of begining brace that has formed the enclosing sexpr. The replaced character class must obey [the rules](#control-set) for control set. Any clause from (`delimiters:`, `braces:`, `escape:`) must appear at most once. Configuration directive cannot be empty. Example:
-```
-    (
-        [\skobki braces: "{" "}"]
-        Now we only accept curlies!
-        {foo bar} {baz}
-    )
-    ([\skobki braces: "{(" "})" escape: "$"] We can use $$ to represent escape and mask the
-        closing matching brace $) now. Also, other sepxr: ({a b}{c d})
-    )
-    ([\skobki delimiters: "-"]------The dashes are nonimportant and will be-----used to delimit, notice
-    that we don't have newline here so this token will contain it too)
+```lisp
+(
+    [\skobki braces: "{" "}"]
+    Now we only accept curlies!
+    {foo bar} {baz}
+)
+([\skobki braces: "{(" "})" escape: "$"] We can use $$ to represent escape and mask the
+    closing matching brace $) now. Also, other sepxr: ({a b}{c d})
+)
+([\skobki delimiters: "-"]------The dashes are nonimportant and will be-----used to delimit, notice
+that we don't have newline here so this token will contain it too)
 ```
 Grammar:
-```
-    Skobki ::= '[' ESCAPE skobki WS+ (
-        | delimiters: WS+ C_STR
-        | braces: WS+ C_STR WS+ C_STR
-        | escape: '"' CHAR '"'
-    )+ WS+ ']'
+```EBNF
+Skobki ::= '[' ESCAPE skobki WS+ (
+    | delimiters: WS+ C_STR
+    | braces: WS+ C_STR WS+ C_STR
+    | escape: '"' CHAR '"'
+)+ WS+ ']'
 ```
 
 5. `[\ver N M K]`. Version directive. Upon encountering the directive, check if specified version in form of N.M.K (major, minor and patch) is less than or equal to
 the version of skobki library. If the version is greater, an error is issued. Example:
-```
-    (
-        [\ver 1 0 0]
-        something....
-    )
+```lisp
+(
+    [\ver 1 0 0]
+    something....
+)
 ```
 Grammar:
-```
-    Ver ::= '[' ESCAPE ver WS+ NUM WS+ NUM WS+ NUM WS* ']'
+```EBNF
+Ver ::= '[' ESCAPE ver WS+ NUM WS+ NUM WS+ NUM WS* ']'
 ```
 
 Other directive names are reserved for future use.
@@ -209,4 +260,19 @@ to parse some arbitrary part of document tree differently, preserving the config
 
 ## Parser
 
-TODO: nodes and stuff
+Since lexican tokens are insufficient to properly manipulate the tree, the concept of node is introduced. Nodes are used to link text tokens into a tree. Node has the following structure:
+
+```ts
+Node = {
+    start: index
+    end: index
+    count: natural
+    parent: index
+    next_sibling: index
+}
+```
+where `index` is a descriptor that is semantically used as an index into tokens collection. Each `index` can have a default invalid value such as `-1`, `null` or others.
+
+Indices `start` and `end` encode a span of tokens that compose the node. `count` is used to encode how many children given nodes has. `parent` is used to reference parent node of the current node. `next_sibling` is used to reference next sibling on the same level as the current node.
+
+The children of a particular node need to go immediately after the node itself. "Immediately after" specifies correponding location in the node collection that composes the document tree. This is reminiscent of the in-order tree traversal of a parsed tree.
