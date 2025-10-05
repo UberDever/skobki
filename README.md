@@ -31,7 +31,7 @@
 1. Delimiters -- set of characters that delimits text tokens
 1. Braces -- set of characters that is used to contruct document tree nodes
 1. Escape -- a character that is used to escape other characters from control set
-1. Directive -- a clause with special syntax that is used to configure lexing in a particular area of sexpr
+1. Directive -- a character sequence with special syntax that is used to configure lexing in a particular area of sexpr
 1. Node -- a metadata about payload, primarily used to link text tokens into graph
 1. Document tree -- a collection of nodes
 
@@ -43,6 +43,21 @@ Hovewer, the format itself doesn't restrict the use of other (even UTF-32) encod
 
 ## Lexer
 
+The lexical structure of the document is defined by the following EBNF
+```
+    CHARACTER
+    WORD ::= CHARACTER+
+    WORD | DELIMITER | ESCAPE CHARACTER
+
+    Tree ::= DELIMITER* OPEN_BRACE Token* CLOSE_BRACE DELIMITER*
+    Token ::= 
+        | WORD
+        | DELIMITER
+        | ESCAPE CHARACTER
+        | OPEN_BRACE Token* CLOSE_BRACE
+```
+Where `DELIMITER` is any character from delimiters control set, `ESCAPE` is a character from escape control set and `OPEN_BRACE` and `CLOSE_BRACE` are pair of characters from braces control set.
+
 ### Control set
 
 Control set is defined as follows
@@ -50,7 +65,7 @@ Control set is defined as follows
     ControlSet = {
         delimiters: List C
         braces: List (C, C)
-        Escape: C
+        escape: C
     }
 ```
 
@@ -171,11 +186,27 @@ Grammar:
     )+ WS+ ']'
 ```
 
+5. `[\ver N M K]`. Version directive. Upon encountering the directive, check if specified version in form of N.M.K (major, minor and patch) is less than or equal to
+the version of skobki library. If the version is greater, an error is issued. Example:
+```
+    (
+        [\ver 1 0 0]
+        something....
+    )
+```
+Grammar:
+```
+    Ver ::= '[' ESCAPE ver WS+ NUM WS+ NUM WS+ NUM WS* ']'
+```
+
 Other directive names are reserved for future use.
 
-TODO: directive position and count; stacking
-TODO: versioning
+Directives (if any) must appear as an immediate character sequence after begining brace of the sexpr, although, there can be any number of delimiter characters preceeding such directive. There can only be one directive clause per sexpr. If multiple directives are encountered, an error is issued.
+
+Directives can stack. That is, if some directive allows parsing in general mode after it is encountered (like \`skobki or \`ver directives), the next directive encountered
+in the child sexpr can stack up with effect from parent directive. Effect of every directive is lexically scoped, that is, when scope of the directive ends on closing brace, its effect cancels. This means, that \`skobki configuration can be used locally
+to parse some arbitrary part of document tree differently, preserving the configuration for other parts of the tree.
 
 ## Parser
 
-TODO: document ebnf
+TODO: nodes and stuff
