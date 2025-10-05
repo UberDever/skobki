@@ -196,7 +196,10 @@ C_STR ::= '"' (ESCAPED | CHAR)* '"'
 IDENT ::= [a-bA-B_]+
 NUM ::=  [0-9] | [1-9][0-9]+
 
-Directive ::= '[' ESCAPE IDENT WS+ (CHAR | C_STR | NUM | WS)* ']'
+Directive ::= '[' ESCAPE DirectiveBody ']'
+DirectiveBody ::= 
+    | IDENT
+    | IDENT WS+ (CHAR | C_STR | NUM | WS)*
 ```
 
 The main purpose of directives is to configure the lexer in some way for the rest of enclosing sexpr or till the EOF. The directive is in effect after closing bracket of the directive and until the next matching brace that syntactically matches the beginning brace of enclosing sexpr. Note that this closing brace is expected immediately after the directive effect ends.
