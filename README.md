@@ -2,9 +2,9 @@
 
 # In short
 
-It sucks that such formats as `csv` are popular, yet there is no popular strictly tree-based format with minimal syntax. But this format exists and its called [s-expressions](https://stackoverflow.com/a/74172551)! The problem, however, is that this format is pretty unspecified and tied to a particular language. Also, there is a way to extend it to be usable, but it requires adding built-in types like `string` or `date` that remove beauty the generality of the format alltogether!
+It sucks that such formats as `csv` are popular, yet there is no popular strictly tree-based format with minimal syntax. But this format exists and its called [s-expressions](https://stackoverflow.com/a/74172551)! The problem, however, is that this format is pretty unspecified and tied to a particular language. Also, there is a way to extend it to be usable, but it requires adding built-in types like `string` or `date` that remove beauty of the generality of the format alltogether!
 
-This take on the format preserves basic sexpr as a main building block for the tree. Instead of built-in types it uses special *lexing directives* that allow to parse particular character sequence differently. This way, you get any character sequence as you like without such fuss as commas, quotes or other delimiter junk.
+This take on the format preserves basic sexpr as a main building block for the tree. Instead of built-in types it uses special *lexing directives* that allow to parse particular character sequences differently. This way, you encode any character sequence as you like without such fuss as commas, quotes or unnecessary escapes.
 
 
 # About
