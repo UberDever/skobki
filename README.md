@@ -6,56 +6,8 @@ It sucks that such formats as `csv` are popular, yet there is no popular strictl
 
 This take on the format preserves basic sexpr as a main building block for the tree. Instead of built-in types it uses special *lexing directives* that allow to parse particular character sequence differently. This way, you get any character sequence as you like without such fuss as commas, quotes or other delimiter junk.
 
-# Examples
 
-The simple tree with the root node containing two words `Hello` and `world`
-```lisp
-(Hello world)
-```
-
-More sophisticated example encoding arbitrary configuration
-```lisp
-(
-    (user: (
-        name: Alice
-        roles: (admin tester)
-        active: true
-    ))
-    (max_sessions: 5)
-)
-```
-
-Corresponding JSON
-```json
-{
-    "user": {
-        "name": "Alice",
-        "roles": ["admin", "tester"],
-        "active": true
-    },
-    "maxSessions": 5
-}
-```
-
-As you see, there is no much difference. However, the same JSON could be encoded differently
-
-```lisp
-(   [`skobki braces: "{([" "})]"]
-    user: { 
-        name: Alice
-        roles: [admin tester]
-        active: true
-    }
-    max_sessions: 5
-)
-```
-
-Looks much more clean, isn't it? Thanks to `skobki` [directive](#directives), we are able to use different syntax to aid readability
-
-
-# Spec
-
-## About
+# About
 
 **What it is**: minimal structured format based on [s-expressions](https://stackoverflow.com/a/74172551) with configurable lexing.
 
@@ -73,6 +25,78 @@ Looks much more clean, isn't it? Thanks to `skobki` [directive](#directives), we
 - Writability (and to the lesser extent readability): sepxr generally doesn't read good, but we sacrifice this for generality and homogeneity
 - Expressiveness: format is simple, but not easy; format is flexible, but not expressive out of the box, you need stuff => you interpret/encode it yourself
 - Uniqueness: I really want to be this as general and boring as possible since this helps with existing tooling
+
+# Examples
+
+## Simple
+
+The simple tree with the root node containing two words `Hello` and `world`:
+```lisp
+(Hello world)
+```
+
+More complex tree:
+```
+(
+    (version 1.0)
+    (debug true)
+    (timeout 30)
+)
+```
+
+If you need a string, use an `s` [directive](#directives):
+```
+(
+    (title ([`s]Lord of the rings))
+    (author ([`s]J. R. R. Tolkien))
+    (publication ([`s]29 July 1954))
+)
+```
+
+## JSON-like
+
+Consider the encoding of an arbitrary configuration:
+```lisp
+(
+    (user: (
+        name: Alice
+        roles: (admin tester)
+        active: true
+    ))
+    (max_sessions: 5)
+)
+```
+
+Corresponding JSON:
+```json
+{
+    "user": {
+        "name": "Alice",
+        "roles": ["admin", "tester"],
+        "active": true
+    },
+    "maxSessions": 5
+}
+```
+
+As you see, there is no much difference. However, the same JSON could be encoded differently:
+
+```lisp
+(   [`skobki braces: "{([" "})]"]
+    user: { 
+        name: Alice
+        roles: [admin tester]
+        active: true
+    }
+    max_sessions: 5
+)
+```
+
+Looks much more clean, isn't it? Thanks to `skobki` [directive](#directives), we are able to use different syntax to aid readability.
+
+Also see [more examples](#more-examples) below.
+
+# Spec
 
 ## Terminology
 
@@ -179,26 +203,26 @@ The main purpose of directives is to configure the lexer in some way for the res
 
 There are a number of different directives. To represent the currently used escape, the symbol `\` will be used in the following description of the directives. Note that the default symbol that is used for escape is backtick \`
 
-1. `[\str]`. String directive. Directive forces the lexer to include every character that is not a matching closing brace of the enclosing sexpr. The escape could be used to escape the escape itself or the matching closing brace to continue consuming the input. Example:
+1. `[\s]`. String directive. Directive forces the lexer to include every character that is not a matching closing brace of the enclosing sexpr. The escape could be used to escape the escape itself or the matching closing brace to continue consuming the input. Example:
 ```lisp
-([\str]This is a string)
-([\str] this also a string, but with \) being escaped)
-([\str]As you could
+([\s]This is a string)
+([\s] this also a string, but with \) being escaped)
+([\s]As you could
     tell, there are no real
                     difficulties
 writing a multiline string verbatim too)
 ```
 Grammar:
 ```EBNF
-Str ::= '[' ESCAPE str WS* ']'
+Str ::= '[' ESCAPE s WS* ']'
 ```
 
-2. `[\str SENTINEL]`. String with sentinel. Directive forces the lexer to include every character that doesn't match a sentinel character sequence or EOF. The escape could be used to escape the escape itself or the sentinel character sequence to continue consuming the input. Sentinel must not represent a character from a current control set. Example:
+2. `[\s SENTINEL]`. String with sentinel. Directive forces the lexer to include every character that doesn't match a sentinel character sequence or EOF. The escape could be used to escape the escape itself or the sentinel character sequence to continue consuming the input. Sentinel must not represent a character from a current control set. Example:
 ```lisp
-([\str "EOF"]This string can contain anything: braces () and unbalanced ones ). Also some 
+([\s "EOF"]This string can contain anything: braces () and unbalanced ones ). Also some 
 curlies-squares like {[with escapes \\ in them]} EOF)
-([\str "\""]This string will go a long way until double quote is encountered")
-([\str "\u0053\u004c\u004f\u0050"] The 0x53 0x4c 0x4f 0x50 is for \SLOP in UTF-8. Notice that we
+([\s "\""]This string will go a long way until double quote is encountered")
+([\s "\u0053\u004c\u004f\u0050"] The 0x53 0x4c 0x4f 0x50 is for \SLOP in UTF-8. Notice that we
 can't use \SLOP as a word directly since it is a sentinel, but ) or 🍰 can be used SLOP)
 ```
 Grammar:
@@ -276,3 +300,7 @@ where `index` is a descriptor that is semantically used as an index into tokens 
 Indices `start` and `end` encode a span of tokens that compose the node. `count` is used to encode how many children given nodes has. `parent` is used to reference parent node of the current node. `next_sibling` is used to reference next sibling on the same level as the current node.
 
 The children of a particular node need to go immediately after the node itself. "Immediately after" specifies correponding location in the node collection that composes the document tree. This is reminiscent of the in-order tree traversal of a parsed tree.
+
+# More examples
+
+TODO:
