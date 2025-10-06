@@ -296,11 +296,11 @@ Node = {
     next_sibling: index
 }
 ```
-where `index` is a descriptor that is semantically used as an index into tokens collection. Each `index` can have a default invalid value such as `-1`, `null` or others.
+where `index` is a descriptor that is semantically used reference to the element of tokens collection. Each `index` can have a default invalid value such as `-1`, `null` or others.
 
 Indices `start` and `end` encode a span of tokens that compose the node. `count` is used to encode how many children given nodes has. `parent` is used to reference parent node of the current node. `next_sibling` is used to reference next sibling on the same level as the current node.
 
-The children of a particular node need to go immediately after the node itself. "Immediately after" specifies correponding location in the node collection that composes the document tree. This is reminiscent of the in-order tree traversal of a parsed tree.
+The children of a particular node need to go immediately after the node itself. "Immediately after" specifies correponding location in the node collection that composes the document tree. This is reminiscent of the in-order tree traversal of a parsed tree. This way, no children in the node itself is stored.
 
 TODO: be explicit about errors
 
