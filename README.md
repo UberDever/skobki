@@ -55,13 +55,13 @@ If you need a string, use an `s` [directive](#directives):
 
 ## JSON-like
 
-Consider the encoding of an arbitrary configuration:
+Consider the encoding of an arbitrary configuration as a list of pairs `key-value`:
 ```lisp
 (
     (user: (
-        name: Alice
-        roles: (admin tester)
-        active: true
+        (name: Alice)
+        (roles: (admin tester))
+        (active: true)
     ))
     (max_sessions: 5)
 )
