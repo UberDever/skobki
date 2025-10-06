@@ -30,11 +30,7 @@ struct Config {
   struct Span escape;
 };
 
-enum Error {
-  ERROR_INVALID_ESCAPE = -1,
-  ERROR_INVALID_INPUT_RANGE = -2,
-  ERROR_UNMATCHED_BRACE = -3
-};
+enum Error { ERROR_INVALID_ESCAPE = -1, ERROR_INVALID_INPUT_RANGE = -2 };
 
 struct Lexer {
   const char *in;
@@ -145,11 +141,6 @@ bool lexer_eat_delimiter(struct Lexer *l, struct Token *out_token) {
 
 bool lexer_eat_brace(struct Lexer *l, struct Token *token) {
   if (lexer_peek_token_known(*l, l->config.braces_open)) {
-    uint next = l->cur + 1;
-    if (next >= l->in_view.start + l->in_view.len) {
-      l->error = ERROR_UNMATCHED_BRACE;
-      return false;
-    }
     token->type = TOKEN_TYPE_BRACE;
     token->body.start = l->cur;
     token->body.len = 1;
@@ -190,37 +181,6 @@ struct Token lexer_next_token(struct Lexer *l) {
     return token;
   }
 
-  if (lexer_peek_token_known(*l, l->config.escape)) {
-    lexer_advance(l);
-    if (!lexer_check_errors(l)) {
-      l->error = ERROR_INVALID_ESCAPE;
-      return token;
-    }
-    token.type = TOKEN_TYPE_TEXT;
-    token.body.start = l->cur;
-    token.body.len = 1;
-
-    if (lexer_peek_token_known(*l, l->config.delimiters)) {
-      lexer_advance(l);
-      return token;
-    }
-    if (lexer_peek_token_known(*l, l->config.braces_open)) {
-      lexer_advance(l);
-      return token;
-    }
-    if (lexer_peek_token_known(*l, l->config.braces_close)) {
-      lexer_advance(l);
-      return token;
-    }
-    if (lexer_peek_token_known(*l, l->config.escape)) {
-      lexer_advance(l);
-      return token;
-    }
-
-    l->error = ERROR_INVALID_ESCAPE;
-    return token;
-  }
-
   token.type = TOKEN_TYPE_TEXT;
   token.body.start = l->cur;
   while (true) {
@@ -230,7 +190,12 @@ struct Token lexer_next_token(struct Lexer *l) {
     }
     if (lexer_peek_token_known(*l, l->config.escape)) {
       lexer_advance(l);
+      if (!lexer_check_errors(l)) {
+        l->error = ERROR_INVALID_ESCAPE;
+        return token;
+      }
       lexer_advance(l);
+      // TODO: check skippable
       continue;
     }
     if (lexer_peek_token_known(*l, l->config.delimiters)) {
@@ -266,23 +231,28 @@ int main(void) {
   const char *in = "";
 #if 0
   in = "(Hello world)";
-  in = "(Hello\\ world)";
+  in = "(Hello` world)";
   in = "(\
-        (version 1.0)\
-        (debug true)\
-        (timeout 30)\
-    )";
-    in = "\\ ";
-    in = "\\\n";
-    in = "\\)";
-    in = "\\(";
-    in = "\\\\";
-    in = "   \
-  (Hello\\ world!⚡\
-  )))\\)tok\n\
+(version 1.0)\
+(debug true)\
+(timeout 30)\
+)";
+  in = "`\n";
+  in = "`)";
+  in = "`(";
+  in = "``";
+  in = "   \
+  (Hello` world!⚡\
+  )))`)tok\n\
   ";
+  in = "(`s|Hello world!)";
+  in = "\n";
+  in = " ";
+  in = ")";
+  in = "(";
+  in = "`"; /*error*/
+  in = "` ";
 #endif
-  in = "(`str|Hello world!)";
 
   lexer_init_from_cstr(&l, in);
   while (!l.is_eof && cur_token < max_tokens) {
