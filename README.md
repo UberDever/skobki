@@ -36,7 +36,7 @@ The simple tree with the root node containing two words `Hello` and `world`:
 ```
 
 More complex tree:
-```
+```lisp
 (
     (version 1.0)
     (debug true)
@@ -45,7 +45,7 @@ More complex tree:
 ```
 
 If you need a string, use an `s` [directive](#directives):
-```
+```lisp
 (
     (title (`s|Lord of the rings))
     (author (`s|J. R. R. Tolkien))
