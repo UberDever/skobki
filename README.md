@@ -47,9 +47,9 @@ More complex tree:
 If you need a string, use an `s` [directive](#directives):
 ```
 (
-    (title ([`s]Lord of the rings))
-    (author ([`s]J. R. R. Tolkien))
-    (publication ([`s]29 July 1954))
+    (title (`s|Lord of the rings))
+    (author (`s|J. R. R. Tolkien))
+    (publication (`s|29 July 1954))
 )
 ```
 
@@ -82,7 +82,7 @@ Corresponding JSON:
 As you see, there is no much difference. However, the same JSON could be encoded differently:
 
 ```lisp
-(   [`skobki braces: "{([" "})]"]
+(`skobki braces: "{([" "})]" |
     user: { 
         name: Alice
         roles: [admin tester]
@@ -172,9 +172,9 @@ The lexing process can be described as informal state-machine:
 1. On EOF => flush
 2. On character
     - If character in delimiters => flush, emit delimiter token
+    - If character in braces and it is open and immediately next character is an escape => switch to directive parsing, then match `|`
     - If character in braces => flush, emit brace token
     - If character in escape => skip the current character and append the next character to current token
-    - If character is `[` and followed by escape => switch to directive parsing, then match `]`
     - If character is non of the above => append it to the current token
 Where `flush` is to emit the current token and clear its contents.
 
@@ -184,7 +184,7 @@ Note that in any unexpected case an error is reported and lexing stops.
 
 ### Directives
 
-Directive is a sequence of characters, enclosed in square brackets `[`, `]` with the open bracket followed immediately by escape from the control set and a sequence of characters designating identifier.
+Directive is a sequence of characters, that starts with escape from the control set followed by the body of the directive, ending by the pipe symbol `|`.
 
 By default, directive has the following grammar:
 ```EBNF
@@ -196,90 +196,88 @@ C_STR ::= '"' (ESCAPED | CHAR)* '"'
 IDENT ::= [a-z_]+
 NUM ::=  [0-9] | [1-9][0-9]+
 
-Directive ::= '[' ESCAPE DirectiveBody ']'
+Directive ::= ESCAPE DirectiveBody '|'
 DirectiveBody ::= 
     | IDENT
     | IDENT WS+ (CHAR | C_STR | NUM | WS)*
 ```
 
-The main purpose of directives is to configure the lexer in some way for the rest of enclosing sexpr or till the EOF. The directive is in effect after closing bracket of the directive and until the next matching brace that syntactically matches the beginning brace of enclosing sexpr. Note that this closing brace is expected immediately after the directive effect ends.
+The main purpose of directives is to configure the lexer in some way for the rest of enclosing sexpr or till the EOF. The directive is in effect after pipe symbol of the directive and until the next matching brace that syntactically matches the beginning brace of enclosing sexpr. Note that this closing brace is expected immediately after the directive effect ends.
 
 There are a number of different directives. To represent the currently used escape, the symbol `\` will be used in the following description of the directives. Note that the default symbol that is used for escape is backtick \`, but backslash is used primarily for illustrative purposes.
 
-1. `[\s]`. String directive. Directive forces the lexer to include every character that is not a matching closing brace of the enclosing sexpr. The escape could be used to escape the escape itself or the matching closing brace to continue consuming the input. Example:
+1. `\s|`. String directive. Directive forces the lexer to include every character that is not a matching closing brace of the enclosing sexpr. The escape could be used to escape the escape itself or the matching closing brace to continue consuming the input. Example:
 ```lisp
-([\s]This is a string)
-([\s] this also a string, but with \) being escaped)
-([\s]As you could
+(\s|This is a string)
+(\s| this also a string, but with \) being escaped)
+(\s|As you could
     tell, there are no real
                     difficulties
 writing a multiline string verbatim too)
 ```
 Grammar:
 ```EBNF
-Str ::= '[' ESCAPE s WS* ']'
+Str ::= ESCAPE s WS* '|'
 ```
 
-2. `[\s SENTINEL]`. String with sentinel. Directive forces the lexer to include every character that doesn't match a sentinel character sequence or EOF. The escape could be used to escape the escape itself or the sentinel character sequence to continue consuming the input. Sentinel must not represent a character from a current control set. Example:
+2. `\s SENTINEL|`. String with sentinel. Directive forces the lexer to include every character that doesn't match a sentinel character sequence or EOF. The escape could be used to escape the escape itself or the sentinel character sequence to continue consuming the input. Sentinel must not represent a character from a current control set. Example:
 ```lisp
-([\s "EOF"]This string can contain anything: braces () and unbalanced ones ). Also some 
+(\s "EOF"|This string can contain anything: braces () and unbalanced ones ). Also some 
 curlies-squares like {[with escapes \\ in them]} EOF)
-([\s "\""]This string will go a long way until double quote is encountered")
-([\s "\u0053\u004c\u004f\u0050"] The 0x53 0x4c 0x4f 0x50 is for \SLOP in UTF-8. Notice that we
+(\s "\""|This string will go a long way until double quote is encountered")
+(\s "\u0053\u004c\u004f\u0050"| The 0x53 0x4c 0x4f 0x50 is for \SLOP in UTF-8. Notice that we
 can't use \SLOP as a word directly since it is a sentinel, but ) or 🍰 can be used SLOP)
 ```
 Grammar:
 ```EBNF
-StrSentinel ::= '[' ESCAPE s WS+ C_STR WS* ']'
+StrSentinel ::= ESCAPE s WS+ C_STR WS* '|'
 ```
 
-3. `[\raw N]`. Raw payload. Directive forces the lexer to skip the next N bytes. N could be represented as an natural of particular size and can have an upper limit that is implementation defined. Escaping doesn't work while the directive is in effect, since there is no need for it. Example:
+3. `\raw N|`. Raw payload. Directive forces the lexer to skip the next N bytes. N could be represented as an natural of particular size and can have an upper limit that is implementation defined. Escaping doesn't work while the directive is in effect, since there is no need for it. Example:
 ```lisp
-([\raw 91]This woman 👩‍🚒 wears red hat. Wow! Also, anyone knows what `str` in JS? What about `\aboba`?)
+(\raw 91|This woman 👩‍🚒 wears red hat. Wow! Also, anyone knows what `str` in JS? What about `\aboba`?)
 ```
 Grammar:
 ```EBNF
-Raw ::= '[' ESCAPE raw WS+ NUM WS* ']'
+Raw ::= ESCAPE raw WS+ NUM WS* '|'
 ```
 
-4. `[\skobki ...]`. Configuration directive. Directive forces to replace character class (delimiters, braces or escape) in the control set up until matching closing brace. When delimiters are changed, matching control brace still expected to be the a counterpart of beginning brace that has formed the enclosing sexpr. The replaced character class must obey [the rules](#control-set) for control set. Any clause from (`delimiters:`, `braces:`, `escape:`) must appear at most once. Configuration directive cannot be empty. Example:
+4. `\skobki ...|`. Configuration directive. Directive forces to replace character class (delimiters, braces or escape) in the control set up until matching closing brace. When delimiters are changed, matching control brace still expected to be the a counterpart of beginning brace that has formed the enclosing sexpr. The replaced character class must obey [the rules](#control-set) for control set. Any clause from (`delimiters:`, `braces:`, `escape:`) must appear at most once. Configuration directive cannot be empty. Example:
 ```lisp
-(
-    [\skobki braces: "{" "}"]
+(\skobki braces: "{" "}"|
     Now we only accept curlies!
     {foo bar} {baz}
 )
-([\skobki braces: "{(" "})" escape: "$"] We can use $$ to represent escape and mask the
+(\skobki braces: "{(" "})" escape: "$"| We can use $$ to represent escape and mask the
     closing matching brace $) now. Also, other sepxr: ({a b}{c d})
 )
-([\skobki delimiters: "-"]------The dashes are nonimportant and will be-----used to delimit, notice
+(\skobki delimiters: "-"|------The dashes are nonimportant and will be-----used to delimit, notice
 that we don't have newline here so this token will contain it too)
 ```
 Grammar:
 ```EBNF
-Skobki ::= '[' ESCAPE skobki WS+ (
+Skobki ::= ESCAPE skobki WS+ (
     | delimiters: WS+ C_STR
     | braces: WS+ C_STR WS+ C_STR
     | escape: '"' CHAR '"'
-)+ WS* ']'
+)+ WS* '|'
 ```
 
-5. `[\ver N M K]`. Version directive. Upon encountering the directive, check if specified version in form of N.M.K (major, minor and patch) is less than or equal to
+5. `\ver N M K|`. Version directive. Upon encountering the directive, check if specified version in form of N.M.K (major, minor and patch) is less than or equal to
 the version of skobki library. If the version is greater, an error is issued. Example:
 ```lisp
-(
-    [\ver 1 0 0]
+(\ver 1 0 0|
     something....
 )
 ```
 Grammar:
 ```EBNF
-Ver ::= '[' ESCAPE ver WS+ NUM WS+ NUM WS+ NUM WS* ']'
+Ver ::= ESCAPE ver WS+ NUM WS+ NUM WS+ NUM WS* '|'
 ```
 
 Other directive names are reserved for future use.
 
-Directives (if any) must appear as an immediate character sequence after beginning brace of the sexpr, although, there can be any number of delimiter characters preceeding such directive. There can only be one directive in the sexpr. Since sexpr can contain other sexpr, parent sexpr can contain directive while children can contain their own directives. In other words, only one directive is allowed on the given tree level in a given subtree. If multiple directives are encountered, an error is issued.
+Directives (if any) must appear as an immediate character sequence after beginning brace of the sexpr. There can only be one directive in the sexpr, since there is only one beginning brace. However, each nested sexpr can have its own directive.
 
 Directives can stack. That is, if some directive allows parsing in general mode after it is encountered (like \`skobki or \`ver directives), the next directive encountered
 in the child sexpr can stack up with effect from parent directive. Effect of every directive is lexically scoped, that is, when scope of the directive ends on closing brace, its effect cancels. This means, that \`skobki configuration can be used locally
