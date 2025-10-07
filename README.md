@@ -291,6 +291,21 @@ Grammar:
 Ver ::= ESCAPE ver WS+ NUM WS+ NUM WS+ NUM WS* '|'
 ```
 
+6. `\rem|`. Comment (reminder) directive. Act exaclty like `\s|`, except the resuling token isn't included in the token collection.
+
+Example:
+```lisp
+(\rem|Don't forget to by eggs)
+(
+    1 / 0 (\rem|TODO: this is too dangerous)
+)
+```
+
+Grammar:
+```EBNF
+Rem ::= ESCAPE rem WS* '|'
+```
+
 Other directive names are reserved for future use.
 
 Directives (if any) must appear as an immediate character sequence after beginning brace of the sexpr. There can only be one directive in the sexpr, since there is only one beginning brace. However, each nested sexpr can have its own directive.
