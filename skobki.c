@@ -42,7 +42,8 @@ struct Config {
 
 enum Error {
   ERROR_INVALID_ESCAPE = -1,
-  ERROR_INVALID_INPUT_RANGE = -2
+  ERROR_INVALID_INPUT_RANGE = -2,
+  ERROR_FAILED_DIRECTIVE_PARSE = -3
 };
 
 struct Lexer {
@@ -87,7 +88,48 @@ struct Config default_config(void) {
   return r;
 }
 
-bool lexer_check_errors(struct Lexer* l) {
+char lexer_find_matching_close(struct Lexer* l, char open_brace) {
+  uint i = 0;
+  for (i = 0; i < l->config.braces_open.len; ++i) {
+    if (l->config.punct[l->config.braces_open.start + i] == open_brace) {
+      return l->config.punct[l->config.braces_close.start + i];
+    }
+  }
+  return '\0';
+}
+
+static bool strings_equal(
+    const char* input_lhs, struct Span lhs, const char* input_rhs, struct Span rhs) {
+  uint i = 0;
+  if (lhs.len != rhs.len) {
+    return false;
+  }
+  for (i = 0; i < lhs.len; ++i) {
+    if (input_lhs[lhs.start + i] != input_rhs[rhs.start + i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static bool strings_equal_cstr1(const char* input_lhs, struct Span lhs, const char* rhs) {
+  return strings_equal(input_lhs, lhs, rhs, span_from_cstr(rhs));
+}
+
+static bool strings_equal_cstr2(const char* lhs, const char* rhs) {
+  return strings_equal(lhs, span_from_cstr(lhs), rhs, span_from_cstr(rhs));
+}
+
+void lexer_init_from_cstr(struct Lexer* l, const char* str) {
+  l->in = str;
+  l->in_view = span_from_cstr(str);
+  l->cur = 0;
+  l->is_eof = false;
+  l->error = 0;
+  l->config = default_config();
+}
+
+static bool lexer_check_errors(struct Lexer* l) {
   if (l->is_eof || l->error != 0) {
     return false;
   }
@@ -102,12 +144,12 @@ bool lexer_check_errors(struct Lexer* l) {
   return true;
 }
 
-void lexer_advance(struct Lexer* l) {
+static void lexer_advance(struct Lexer* l) {
   l->cur++;
   lexer_check_errors(l);
 }
 
-bool lexer_peek_token_known(struct Lexer l, struct Span range) {
+static bool lexer_peek_token_known(struct Lexer l, struct Span range) {
   uint i = 0;
   char c;
   if (!lexer_check_errors(&l)) {
@@ -122,17 +164,136 @@ bool lexer_peek_token_known(struct Lexer l, struct Span range) {
   return false;
 }
 
-void lexer_init_from_cstr(struct Lexer* l, const char* str) {
-  l->in = str;
-  l->in_view = span_from_cstr(str);
-  l->cur = 0;
-  l->is_eof = false;
-  l->error = 0;
-  l->config = default_config();
+static bool lexer_peek_ws(struct Lexer l) {
+  char c;
+  if (!lexer_check_errors(&l)) {
+    return false;
+  }
+  c = l.in[l.cur];
+  return (c == (char)0x20) || (c == (char)0x09) || (c == (char)0x0a) || (c == (char)0x0d);
 }
 
-bool lexer_eat_directive(struct Lexer* l, struct Token* out_token) {
-  int a = 1 / 0; /*TODO*/
+static bool lexer_peek_hex(struct Lexer l) {
+  char c;
+  if (!lexer_check_errors(&l)) {
+    return false;
+  }
+  c = l.in[l.cur];
+  return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+}
+
+static bool lexer_peek_ident(struct Lexer l) {
+  char c;
+  if (!lexer_check_errors(&l)) {
+    return false;
+  }
+  c = l.in[l.cur];
+  return (c >= 'a' && c <= 'z') || (c == '_');
+}
+
+static bool lexer_peek_digit(struct Lexer l) {
+  char c;
+  if (!lexer_check_errors(&l)) {
+    return false;
+  }
+  c = l.in[l.cur];
+  return (c >= '0' && c <= '9');
+}
+
+static bool lexer_try_eat_ws(struct Lexer* l) {
+  if (!lexer_peek_ws(*l)) {
+    return false;
+  }
+  while (true) {
+    if (!lexer_peek_ws(*l)) {
+      break;
+    }
+    lexer_advance(l);
+  }
+  return true;
+}
+
+static bool lexer_try_eat_ident(struct Lexer* l, struct Span* out_span) {
+  uint start = l->cur;
+  if (!lexer_peek_ident(*l)) {
+    return false;
+  }
+  while (true) {
+    if (!lexer_peek_ident(*l)) {
+      break;
+    }
+    lexer_advance(l);
+  }
+  out_span->start = start;
+  out_span->len = l->cur - start;
+  return true;
+}
+
+bool lexer_directive_string(struct Lexer* l, struct Token* out_token, uint open_brace_pos) {
+  uint start = l->cur;
+  char close_brace = lexer_find_matching_close(l, l->in[open_brace_pos]);
+  if (close_brace == '\0') {
+    l->error = ERROR_FAILED_DIRECTIVE_PARSE;
+    return false;
+  }
+
+  while (true) {
+    if (!lexer_check_errors(l)) {
+      return false;
+    }
+    if (lexer_peek_token_known(*l, l->config.escape)) {
+      lexer_advance(l);
+      if (lexer_peek_token_known(*l, l->config.delimiters)) {
+        lexer_advance(l);
+        continue;
+      }
+      if (lexer_peek_token_known(*l, l->config.braces_open)) {
+        lexer_advance(l);
+        continue;
+      }
+      if (lexer_peek_token_known(*l, l->config.braces_close)) {
+        lexer_advance(l);
+        continue;
+      }
+      if (lexer_peek_token_known(*l, l->config.escape)) {
+        lexer_advance(l);
+        continue;
+      }
+
+      l->error = ERROR_INVALID_ESCAPE;
+      return false;
+    }
+    if (l->in[l->cur] == close_brace) {
+      out_token->type = TOKEN_TYPE_TEXT;
+      out_token->body.start = start;
+      out_token->body.len = l->cur - start;
+      lexer_advance(l);
+      return true;
+    }
+    lexer_advance(l);
+  }
+
+  return false;
+}
+
+bool lexer_eat_directive(struct Lexer* l, struct Token* out_token, uint open_brace_pos) {
+  struct Span ident;
+  if (!lexer_try_eat_ident(l, &ident)) {
+    l->error = ERROR_FAILED_DIRECTIVE_PARSE;
+    return false;
+  }
+
+  if (strings_equal_cstr1(l->in, ident, "s")) {
+    if (l->in[l->cur] == '|') {
+      lexer_advance(l);
+      return lexer_directive_string(l, out_token, open_brace_pos);
+    }
+    if (!lexer_try_eat_ws(l)) {
+      l->error = ERROR_FAILED_DIRECTIVE_PARSE;
+      return false;
+    }
+  }
+
   return false;
 }
 
@@ -156,7 +317,11 @@ bool lexer_eat_brace(struct Lexer* l, struct Token* token) {
     lexer_advance(l);
 
     if (lexer_peek_token_known(*l, l->config.escape)) {
-      return lexer_eat_directive(l, token);
+      lexer_advance(l);
+      if (!lexer_check_errors(l)) {
+        return false;
+      }
+      return lexer_eat_directive(l, token, token->body.start);
     }
 
     return true;
@@ -175,6 +340,7 @@ bool lexer_eat_brace(struct Lexer* l, struct Token* token) {
 
 /* TODO: Maybe employ condensation of the same delimiter tokens? */
 /* TODO: Locations */
+/* TODO: Brace matching must be implemented in tree constructor */
 
 struct Token lexer_next_token(struct Lexer* l) {
   struct Token token = {0};
@@ -279,19 +445,6 @@ struct Expectation {
     enum Error error;
   } as;
 };
-
-bool strings_equal(const char* input_lhs, struct Span lhs, const char* input_rhs, struct Span rhs) {
-  size_t i = 0;
-  if (lhs.len != rhs.len) {
-    return false;
-  }
-  for (i = 0; i < lhs.len; ++i) {
-    if (input_lhs[lhs.start + i] != input_rhs[rhs.start + i]) {
-      return false;
-    }
-  }
-  return true;
-}
 
 int lexer_test_general(const char* in, struct Expectation expected) {
   struct Lexer l = {0};
@@ -563,10 +716,6 @@ int main(void) {
         e);
   }
 
-#if 0
-    TEST_LEXER("(`s|Hello world!)", expected);
-#endif
-
   {
     struct Expectation e = {0};
     struct ExpectedTokens expected = {0};
@@ -644,6 +793,19 @@ int main(void) {
     expected.xs = arr;
     e.as.tokens = expected;
     TEST_LEXER("` ", e);
+  }
+
+  {
+    struct Expectation e = {0};
+    struct ExpectedTokens expected = {0};
+    uint len = 1;
+    struct ExpectedToken arr[1] = {
+        {TOKEN_TYPE_TEXT, "Hello world!"},
+    };
+    expected.len = len;
+    expected.xs = arr;
+    e.as.tokens = expected;
+    TEST_LEXER("(`s|Hello world!)", e);
   }
 
   return result;

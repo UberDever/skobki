@@ -30,7 +30,7 @@ This take on the format preserves basic sexpr as a main building block for the t
 
 ## Simple
 
-The simple tree with the root node containing two words `Hello` and `world`:
+The simple tree with the root node containing two text tokens `Hello` and `world`:
 ```lisp
 (Hello world)
 ```
@@ -202,7 +202,7 @@ NUM ::=  [0-9] | [1-9][0-9]+
 
 Directive ::= ESCAPE DirectiveBody '|'
 DirectiveBody ::=
-    | IDENT
+    | IDENT WS*
     | IDENT WS+ (CHAR | C_STR | NUM | WS)*
 ```
 
