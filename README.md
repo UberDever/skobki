@@ -83,7 +83,7 @@ As you see, there is no much difference. However, the same JSON could be encoded
 
 ```lisp
 (`skobki braces: "{([" "})]" |
-    user: { 
+    user: {
         name: Alice
         roles: [admin tester]
         active: true
@@ -125,7 +125,7 @@ The lexical structure of the document is defined by the following EBNF
 TEXT ::= CHARACTER+
 
 Tree ::= DELIMITER* OPEN_BRACE Token* CLOSE_BRACE DELIMITER*
-Token ::= 
+Token ::=
     | TEXT
     | DELIMITER
     | ESCAPE CHARACTER
@@ -169,14 +169,18 @@ control_set: ControlSet = {
 ### Lexing process
 
 The lexing process can be described as informal state-machine:
+0. In general mode:
 1. On EOF => flush
 2. On character
     - If character in delimiters => flush, emit delimiter token
-    - If character in braces and it is open and immediately next character is an escape => switch to directive parsing, then match `|`
+    - If character in braces and it is open and immediately next character is an escape => switch to directive parsing, then match `|`, then switch to general mode
     - If character in braces => flush, emit brace token
-    - If character in escape => skip the current character and append the next character to current token
+    - If character in escape => flush, emit the next character as text token and proceed parsing
     - If character is non of the above => append it to the current token
 Where `flush` is to emit the current token and clear its contents.
+
+If escape is encountered in general mode, the next character marked as text token. This token must be from the control set.
+If any other character is encountered after escape, an error is issued. The escape rules for directives are dictated by the directive itself.
 
 If directive is encountered and successfully parsed, parser executes an action that is [custom to every directive](#directives) and then switches back to general mode.
 
@@ -197,7 +201,7 @@ IDENT ::= [a-z_]+
 NUM ::=  [0-9] | [1-9][0-9]+
 
 Directive ::= ESCAPE DirectiveBody '|'
-DirectiveBody ::= 
+DirectiveBody ::=
     | IDENT
     | IDENT WS+ (CHAR | C_STR | NUM | WS)*
 ```
@@ -206,7 +210,9 @@ The main purpose of directives is to configure the lexer in some way for the res
 
 There are a number of different directives. To represent the currently used escape, the symbol `\` will be used in the following description of the directives. Note that the default symbol that is used for escape is backtick \`, but backslash is used primarily for illustrative purposes.
 
-1. `\s|`. String directive. Directive forces the lexer to include every character that is not a matching closing brace of the enclosing sexpr. The escape could be used to escape the escape itself or the matching closing brace to continue consuming the input. Example:
+1. `\s|`. String directive. Directive forces the lexer to include every character that is not a matching closing brace of the enclosing sexpr. The escape could be used to escape the escape itself or the matching closing brace to continue consuming the input. Any other form of other escaping is invalid.
+
+Example:
 ```lisp
 (\s|This is a string)
 (\s| this also a string, but with \) being escaped)
@@ -220,9 +226,11 @@ Grammar:
 Str ::= ESCAPE s WS* '|'
 ```
 
-2. `\s SENTINEL|`. String with sentinel. Directive forces the lexer to include every character that doesn't match a sentinel character sequence or EOF. The escape could be used to escape the escape itself or the sentinel character sequence to continue consuming the input. Sentinel must not represent a character from a current control set. Example:
+2. `\s SENTINEL|`. String with sentinel. Directive forces the lexer to include every character that doesn't match a sentinel character sequence or EOF. The escape could be used to escape the escape itself or the sentinel character sequence to continue consuming the input. Any other form of other escaping is invalid. Sentinel must not represent a character from a current control set.
+
+Example:
 ```lisp
-(\s "EOF"|This string can contain anything: braces () and unbalanced ones ). Also some 
+(\s "EOF"|This string can contain anything: braces () and unbalanced ones ). Also some
 curlies-squares like {[with escapes \\ in them]} EOF)
 (\s "\""|This string will go a long way until double quote is encountered")
 (\s "\u0053\u004c\u004f\u0050"| The 0x53 0x4c 0x4f 0x50 is for \SLOP in UTF-8. Notice that we
@@ -233,7 +241,9 @@ Grammar:
 StrSentinel ::= ESCAPE s WS+ C_STR WS* '|'
 ```
 
-3. `\raw N|`. Raw payload. Directive forces the lexer to skip the next N bytes. N could be represented as an natural of particular size and can have an upper limit that is implementation defined. Escaping doesn't work while the directive is in effect, since there is no need for it. Example:
+3. `\raw N|`. Raw payload. Directive forces the lexer to skip the next N bytes. N could be represented as an natural of particular size and can have an upper limit that is implementation defined. Escaping doesn't work while the directive is in effect, since there is no need for it.
+
+Example:
 ```lisp
 (\raw 91|This woman 👩‍🚒 wears red hat. Wow! Also, anyone knows what `str` in JS? What about `\aboba`?)
 ```
@@ -242,7 +252,11 @@ Grammar:
 Raw ::= ESCAPE raw WS+ NUM WS* '|'
 ```
 
-4. `\skobki ...|`. Configuration directive. Directive forces to replace character class (delimiters, braces or escape) in the control set up until matching closing brace. When delimiters are changed, matching control brace still expected to be the a counterpart of beginning brace that has formed the enclosing sexpr. The replaced character class must obey [the rules](#control-set) for control set. Any clause from (`delimiters:`, `braces:`, `escape:`) must appear at most once. Configuration directive cannot be empty. Example:
+4. `\skobki ...|`. Configuration directive. Directive forces to replace character class (delimiters, braces or escape) in the control set up until matching closing brace. When delimiters are changed, matching control brace still expected to be the a counterpart of beginning brace that has formed the enclosing sexpr. The replaced character class must obey [the rules](#control-set) for control set. Escaping rules are the same as in general mode.
+
+Clause `braces:` includes two strings, where matching braces are located on the same positions. Any clause from (`delimiters:`, `braces:`, `escape:`) must appear at most once. Configuration directive cannot be empty.
+
+Example:
 ```lisp
 (\skobki braces: "{" "}"|
     Now we only accept curlies!
@@ -264,7 +278,9 @@ Skobki ::= ESCAPE skobki WS+ (
 ```
 
 5. `\ver N M K|`. Version directive. Upon encountering the directive, check if specified version in form of N.M.K (major, minor and patch) is less than or equal to
-the version of skobki library. If the version is greater, an error is issued. Example:
+the version of skobki library. If the version is greater, an error is issued. Escaping rules are the same as in general mode.
+
+Example:
 ```lisp
 (\ver 1 0 0|
     something....
